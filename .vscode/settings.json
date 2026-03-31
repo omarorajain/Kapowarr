@@ -1,47 +1,30 @@
 {
-	"editor.insertSpaces": true,
-    "editor.tabSize": 4,
-	
+	"python.languageServer": "None",
 	"[python]": {
-		"editor.codeActionsOnSave": {
-			"source.organizeImports": "always",
-		},
+		"editor.defaultFormatter": "charliermarsh.ruff",
 		"editor.formatOnSave": true,
-		"editor.defaultFormatter": "ms-python.autopep8"
+		"editor.codeActionsOnSave": {
+			"source.fixAll.ruff": "explicit",
+			"source.organizeImports.ruff": "explicit"
+		},
 	},
-	"isort.check": true,
-	"isort.severity": {
-		"W": "Warning",
-		"E": "Warning"
-	},
-	"isort.args": [
-		"--jobs", "-1"
-	],
-
 	"python.testing.unittestEnabled": true,
 	"python.testing.unittestArgs": [
-		"-s", "./tests",
-		"-p", "*.py"
+		"-s",
+		"./tests",
+		"-p",
+		"*.py"
 	],
-
-	"python.analysis.typeCheckingMode": "standard",
-	"python.analysis.diagnosticMode": "workspace",
-
-	"mypy-type-checker.reportingScope": "workspace",
-	"mypy-type-checker.preferDaemon": false,
-	"mypy-type-checker.args": [
-		"--explicit-package-bases"
-	],
-  
 	"cSpell.words": [
 		"behaviour",
 		"blocklist",
 		"customisable",
 		"customised",
+		"flaresolverr",
+		"mediafire",
 		"mediamanagement",
 		"TPB's",
 		"traceback",
-		"mediafire",
 		"wetransfer"
 	],
 	"cSpell.languageSettings": [
