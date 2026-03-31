@@ -5,7 +5,7 @@ FROM python:${PYTHON}-slim-${DISTRO} AS python
 
 # --- Build Stage ---
 FROM rust:slim-${DISTRO} AS builder
-WORKDIR /wheels
+WORKDIR /app
 
 # Install Build Dependencies
 RUN --mount=target=/var/lib/apt/lists,type=cache,sharing=private \
@@ -16,17 +16,27 @@ RUN --mount=target=/var/lib/apt/lists,type=cache,sharing=private \
 
 # Copy Python From Python Stage
 COPY --from=python /usr/local /usr/local
-COPY --from=python /usr/lib /usr/lib
-COPY --from=python /lib /lib
-COPY --from=python /etc /etc
 
-# Compile Wheels
-COPY requirements.txt .
-RUN pip3 wheel --wheel-dir=/wheels -r requirements.txt
+COPY pyproject.toml uv.lock ./
+RUN --mount=type=cache,target=/root/.cache/pip,sharing=private \
+    --mount=type=cache,target=/root/.cache/uv,sharing=private \
+    --mount=type=cache,target=/usr/local/cargo/registry,sharing=private \
+    pip3 install uv && \
+    uv sync --frozen --no-dev --no-install-project --compile-bytecode
+
+COPY . .
+RUN python3 -m compileall -q /app/backend /app/frontend /app/Kapowarr.py
 
 # --- Runtime Stage ---
 FROM python:${PYTHON}-slim-${DISTRO} AS runtime
 WORKDIR /app
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PATH="/app/.venv/bin:$PATH" \
+    PUID=0 \
+    PGID=0 \
+    TZ=UTC
 
 # Install Runtime Dependencies
 RUN --mount=target=/var/lib/apt/lists,type=cache,sharing=private \
@@ -36,20 +46,11 @@ RUN --mount=target=/var/lib/apt/lists,type=cache,sharing=private \
     apt-get autoremove -y
 COPY --from=tianon/gosu /gosu /usr/local/bin/
 
-# Install Compiled Wheels
-RUN --mount=from=builder,source=/wheels,target=/wheels \
-    --mount=type=cache,target=/root/.cache/pip,sharing=private \
-    pip3 install --no-index --find-links=/wheels -r /wheels/requirements.txt
-
 RUN groupadd -g 1000 kapowarr && \
     useradd -u 1000 -g kapowarr -d /nonexistent -M -s /bin/bash kapowarr && \
     mkdir -p /app/db /app/logs /app/temp_downloads
 
-COPY --chmod=755 . .
-
-ENV PUID=0 \
-    PGID=0 \
-    TZ=UTC
+COPY --from=builder /app /app
 
 EXPOSE 5656
 
