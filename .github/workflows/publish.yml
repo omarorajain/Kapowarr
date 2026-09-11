@@ -1,0 +1,102 @@
+name: Build and Publish Docker Images
+
+on:
+  push:
+    branches:
+      - "**"
+  workflow_dispatch:
+  schedule:
+    - cron: "0 0 * * 0"
+
+env:
+  REPO: omaj/kapowarr
+
+permissions:
+  contents: read
+
+jobs:
+  build-edge:
+    if: github.ref_name == 'custom-release'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        distro: [bookworm, trixie]
+        python: ["3.13", "3.14"]
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Generate Dynamic Tags
+        id: meta
+        run: |
+          TAGS="${{ env.REPO }}:${{ matrix.distro }}-${{ matrix.python }}-edge"
+
+          # Prevent race conditions
+          if [[ "${{ matrix.distro }}" == "trixie" && "${{ matrix.python }}" == "3.14" ]]; then
+            TAGS="$TAGS,${{ env.REPO }}:${{ matrix.distro }}-edge,${{ env.REPO }}:edge"
+          elif [[ "${{ matrix.distro }}" == "bookworm" && "${{ matrix.python }}" == "3.14" ]]; then
+            TAGS="$TAGS,${{ env.REPO }}:${{ matrix.distro }}-edge"
+          fi
+
+          echo "tags=$TAGS" >> $GITHUB_OUTPUT
+
+      - name: Build and Push Edge
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/386,linux/amd64,linux/arm/v7,linux/arm64/v8
+          push: true
+          build-args: |
+            DISTRO=${{ matrix.distro }}
+            PYTHON=${{ matrix.python }}
+          tags: ${{ steps.meta.outputs.tags }}
+          cache-from: type=gha,scope=edge-${{ matrix.distro }}-${{ matrix.python }}
+          cache-to: type=gha,mode=max,scope=edge-${{ matrix.distro }}-${{ matrix.python }}
+
+  build-testing:
+    if: github.ref_name != 'custom-release' && github.ref_name != 'development'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and Push Testing
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/386,linux/amd64,linux/arm/v7,linux/arm64/v8
+          push: true
+          build-args: |
+            DISTRO=trixie
+            PYTHON=3.14
+          tags: ${{ env.REPO }}:testing
+          cache-from: type=gha,scope=testing
+          cache-to: type=gha,mode=max,scope=testing
