@@ -14,6 +14,7 @@ from backend.implementations.file_processing import (mass_set_file_date,
                                                      mass_set_ownership,
                                                      mass_set_permissions)
 from backend.implementations.naming import mass_rename
+from backend.implementations.file_processing import mass_tag
 from backend.implementations.root_folders import RootFolders
 from backend.implementations.volumes import Volume, refresh_and_scan
 from backend.internals.db import iter_commit
@@ -296,5 +297,29 @@ def mass_editor_file_ownership(
 ) -> None:
     for volume_id in volume_ids:
         mass_set_ownership(volume_id)
+
+    return
+
+@MassEditorActionManager.register_action('tag_metadata')
+def mass_editor_tag_metadata(
+    volume_ids: List[int],
+    identifier: str,
+    kwargs: Any
+) -> None:    
+    force_tag = kwargs.get('force', False)
+    if not isinstance(force_tag, bool):
+        raise InvalidKeyValue('force', force_tag)
+
+    ws = WebSocket()
+    total_items = len(volume_ids)
+
+    for item_index, volume_id in enumerate(iter_commit(volume_ids)):
+        ws.emit(MassEditorStatusEvent(
+            identifier,
+            item_index + 1,
+            total_items
+        ))
+
+        mass_tag(volume_id, force=force_tag)
 
     return
