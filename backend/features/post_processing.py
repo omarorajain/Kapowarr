@@ -21,6 +21,7 @@ from backend.implementations.volumes import Volume
 from backend.internals.db import commit, get_db
 from backend.internals.db_models import FilesDB
 from backend.internals.settings import Settings
+from backend.implementations.file_processing import embed_comicinfo
 
 if TYPE_CHECKING:
     from backend.base.definitions import Download
@@ -259,6 +260,11 @@ class PostProcessingContext:
             self.download.issue_id
         )
         return
+    
+    def embed_metadata(self) -> None:
+        for file in self.download.files:
+            embed_comicinfo(file, self.download.volume_id, force=True)
+        return
 
 
 # region Post-Processors
@@ -278,6 +284,7 @@ class PostProcessor:
         self.ctx.rename_with_proper_extension()
         self.ctx.add_file_to_database()
         self.ctx.convert_file()
+        self.ctx.embed_metadata()
         self.ctx.set_file_properties()
         return
 
@@ -322,6 +329,7 @@ class PostProcessorTorrentsComplete(PostProcessor):
         self.ctx.add_to_history()
         self.ctx.move_torrent_to_dest()
         self.ctx.convert_file()
+        self.ctx.embed_metadata()
         self.ctx.set_file_properties()
         return
 
@@ -340,6 +348,7 @@ class PostProcessorTorrentsCopy(PostProcessor):
         self.ctx.add_to_history()
         self.ctx.copy_file_torrent()
         self.ctx.convert_file()
+        self.ctx.embed_metadata()
         self.ctx.set_file_properties()
         self.download.files = self.ctx.original_files
         return
