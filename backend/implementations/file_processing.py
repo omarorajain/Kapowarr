@@ -4,13 +4,18 @@
 Processing/Altering individual files with permissions, ownership, file date, etc.
 """
 
+import os
+import subprocess
+import zipfile
 from typing import List, Union
 
 from backend.base.definitions import FileDate
 from backend.base.files import (set_file_date, set_volume_folder_owner_group,
                                 set_volume_folder_permissions)
+from backend.base.logging import LOGGER
 from backend.implementations.root_folders import RootFolders
 from backend.internals.db import get_db
+from backend.internals.db_models import FilesDB
 from backend.internals.settings import Settings
 
 
@@ -120,6 +125,86 @@ def mass_set_ownership(volume_id: int) -> None:
         group
     )
 
+    return
+
+
+def embed_comicinfo(filepath: str, volume_id: int, force: bool = False) -> None:
+    """Embed ComicInfo.xml metadata into a CBZ file using ComicTagger.
+
+    Args:
+        filepath (str): The path to the file to be tagged.
+        volume_id (int): The ID of the volume the file belongs to.
+        force (bool, optional): Overwrite existing metadata. 
+            Defaults to False.
+    """
+    if not os.path.exists(filepath):
+        return
+
+    # Only tag CBZ files
+    if not filepath.lower().endswith('.cbz'):
+        return
+
+    # Skip if ComicInfo.xml already exists
+    if not force and zipfile.is_zipfile(filepath):
+        try:
+            with zipfile.ZipFile(filepath, 'r') as zf:
+                if 'ComicInfo.xml' in zf.namelist():
+                    LOGGER.info(f"ComicInfo.xml already embedded in {filepath}, skipping.")
+                    return
+        except zipfile.BadZipFile:
+            LOGGER.warning(f"Bad zip file: {filepath}")
+
+    covered_issues = FilesDB.issues_covered(filepath)
+    if not covered_issues:
+        return
+    
+    # Local to prevent circular import
+    from backend.implementations.volumes import Issue
+
+    try:
+        issue_obj = Issue.from_volume_and_calc_number(volume_id, covered_issues[0])
+        cv_issue_id = issue_obj.get_data().comicvine_id
+    except Exception as e:
+        LOGGER.warning(f"Could not retrieve issue metadata for {filepath}: {e}")
+        return
+
+    cv_api_key = Settings().sv.comicvine_api_key
+
+    LOGGER.info(f'Running ComicTagger on {filepath} with CV Issue ID {cv_issue_id}')
+
+    subprocess.run([
+        "comictagger",
+        "-s",
+        "-t", "cr",
+        "-o",
+        "--id", str(cv_issue_id),
+        "--cv-api-key", str(cv_api_key),
+        "--config", "/app/db/.ComicTagger",
+        filepath
+    ], check=False, stderr=subprocess.DEVNULL)
+    
+
+def mass_tag(volume_id: int, issue_id: int | None = None, force: bool = False) -> None:
+    """Apply metadata tags to all applicable files within a volume or issue.
+
+    Args:
+        volume_id (int): The ID of the volume for which to tag files.
+        issue_id (Union[int, None], optional): The ID of the issue for which
+            to tag files, instead of all volume files. 
+            Defaults to None.
+        force (bool, optional): Overwrite existing metadata. 
+            Defaults to False.
+    """
+    # Local to prevent circular import
+    from backend.implementations.volumes import Volume
+    
+    if issue_id:
+        files = [f["filepath"] for f in Volume(volume_id).get_issue(issue_id).get_files()]
+    else:
+        files = [f["filepath"] for f in Volume(volume_id).get_all_files()]
+
+    for filepath in files:
+        embed_comicinfo(filepath, volume_id, force=force)
     return
 
 
