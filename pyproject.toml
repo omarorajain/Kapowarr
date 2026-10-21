@@ -18,9 +18,10 @@ dependencies = [
     "flask-socketio ~= 5.3",
     "requests[socks] ~= 2.31",
     "waitress ~= 3.0",
-    "websocket-client ~= 1.3", 
+    "websocket-client ~= 1.3",
     "cron-converter~=2.0",
-    "magnet2torrent ~= 1.2"
+    "magnet2torrent ~= 1.2",
+    "comictagger[cbr]>=1.5.5",
 ]
 
 [dependency-groups]

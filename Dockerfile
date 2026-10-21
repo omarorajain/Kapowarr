@@ -12,7 +12,9 @@ RUN --mount=target=/var/lib/apt/lists,type=cache,sharing=private \
     --mount=target=/var/cache/apt,type=cache,sharing=private \
     apt-get update && \
     apt-get install -y --no-install-recommends \
-        build-essential libssl-dev libffi-dev pkg-config
+        build-essential libssl-dev libffi-dev pkg-config \
+        # ComicTagger
+        libicu-dev zlib1g-dev libjpeg-dev
 
 # Copy Python From Python Stage
 COPY --from=python /usr/local /usr/local

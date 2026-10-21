@@ -338,7 +338,8 @@ def api_tasks():
             'refresh_and_scan',
             'auto_search', 'auto_search_issue',
             'mass_rename', 'mass_rename_issue',
-            'mass_convert', 'mass_convert_issue'
+            'mass_convert', 'mass_convert_issue',
+            'mass_tag', 'mass_tag_issue'
         ):
             volume_id = data.get('volume_id')
             if not volume_id or not isinstance(volume_id, int):
@@ -348,7 +349,8 @@ def api_tasks():
         if TaskClass.action in (
             'auto_search_issue',
             'mass_rename_issue',
-            'mass_convert_issue'
+            'mass_convert_issue',
+            'mass_tag_issue'
         ):
             issue_id = data.get('issue_id')
             if not issue_id or not isinstance(issue_id, int):
