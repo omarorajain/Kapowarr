@@ -1,0 +1,138 @@
+name: Build and Publish Docker Images
+
+on:
+  push:
+    branches:
+      - "**"
+  pull_request:
+    branches:
+      - "**"
+  workflow_dispatch:
+    inputs:
+      target_branch:
+        description: "Branch to build (leave blank for current)"
+        required: false
+        type: string
+  schedule:
+    - cron: "0 0 * * 0"
+
+env:
+  REPO: omaj/kapowarr
+  DEFAULT_DISTRO: trixie
+  DEFAULT_PYTHON: "3.14"
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-edge:
+    if: github.ref_name == 'custom-release' && inputs.target_branch == ''
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        distro: [bookworm, trixie]
+        python: ["3.13", "3.14"]
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Generate Dynamic Tags
+        id: meta
+        run: |
+          TAGS="${{ env.REPO }}:${{ matrix.distro }}-${{ matrix.python }}-edge"
+
+          if [[ "${{ matrix.python }}" == "${{ env.DEFAULT_PYTHON }}" ]]; then
+            TAGS="$TAGS,${{ env.REPO }}:${{ matrix.distro }}-edge"
+            
+            if [[ "${{ matrix.distro }}" == "${{ env.DEFAULT_DISTRO }}" ]]; then
+              TAGS="$TAGS,${{ env.REPO }}:edge"
+            fi
+          fi
+
+          echo "tags=$TAGS" >> $GITHUB_OUTPUT
+
+      - name: Build and Push Edge
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/386,linux/amd64,linux/arm/v7,linux/arm64/v8
+          push: true
+          build-args: |
+            DISTRO=${{ matrix.distro }}
+            PYTHON=${{ matrix.python }}
+          tags: ${{ steps.meta.outputs.tags }}
+          cache-from: type=gha,scope=edge-${{ matrix.distro }}-${{ matrix.python }}
+          cache-to: type=gha,mode=max,scope=edge-${{ matrix.distro }}-${{ matrix.python }}
+
+  build-testing:
+    if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.target_branch != '') || (github.event_name == 'push' && github.ref_name != 'custom-release' && github.ref_name != 'development')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+          ref: ${{ inputs.target_branch || github.ref }}
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Login to GHCR
+        if: github.actor != 'dependabot[bot]'
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Format GHCR Tag and Cache Scope
+        id: meta
+        run: |
+          OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            echo "tag=ghcr.io/$OWNER/kapowarr:pr-${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
+            echo "scope=pr-${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
+          else
+            RAW_BRANCH="${{ inputs.target_branch }}"
+            if [ -z "$RAW_BRANCH" ]; then
+              RAW_BRANCH="${{ github.ref_name }}"
+            fi
+            
+            SAFE_BRANCH=$(echo "$RAW_BRANCH" | sed 's/[^a-zA-Z0-9_.-]/-/g')
+            echo "tag=ghcr.io/$OWNER/kapowarr:${SAFE_BRANCH}" >> $GITHUB_OUTPUT
+            echo "scope=branch-${SAFE_BRANCH}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build and Push Testing/PR
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/386,linux/amd64,linux/arm/v7,linux/arm64/v8
+          push: ${{ github.actor != 'dependabot[bot]' }}
+          build-args: |
+            DISTRO=${{ env.DEFAULT_DISTRO }}
+            PYTHON=${{ env.DEFAULT_PYTHON }}
+          tags: ${{ steps.meta.outputs.tag }}
+          cache-from: |
+            type=gha,scope=${{ steps.meta.outputs.scope }}
+            type=gha,scope=edge-${{ env.DEFAULT_DISTRO }}-${{ env.DEFAULT_PYTHON }}
+          cache-to: type=gha,mode=max,scope=${{ steps.meta.outputs.scope }}

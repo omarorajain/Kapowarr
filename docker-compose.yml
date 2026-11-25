@@ -1,7 +1,7 @@
 services:
   kapowarr:
     container_name: kapowarr
-    image: mrcas/kapowarr:latest
+    image: omaj/kapowarr:edge
     environment:
       - PUID=0
       - PGID=0

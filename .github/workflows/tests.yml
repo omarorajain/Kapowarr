@@ -1,33 +1,41 @@
-name: Tests
+name: Tests (Custom Release)
 
 on:
   push:
     branches:
-      - development
+      - custom-release
+
+permissions:
+  contents: read
 
 jobs:
   test:
     runs-on: ubuntu-24.04
     strategy:
       matrix:
-        python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
-        
-    steps:
-      - uses: actions/checkout@v7
-        name: Set up checkout
-        with:
-          fetch-depth: 0
+        python-version: ["3.13", "3.14"]
 
-      - uses: actions/setup-python@v7
-        name: Set up Python ${{ matrix.python-version }}
+    steps:
+      - name: Set up checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
-          cache: 'pip'
 
-      - run: python -m pip install -r requirements.txt
-        name: Install dependencies
+      - name: Install dependencies
+        run: uv sync --frozen --no-dev
 
-      - run: |
-          mkdir -p db
-          python -m unittest discover -s ./tests -p '*.py'
-        name: Run Tests
+      - name: Run Tests
+        run: |
+          mkdir db
+          uv run python -m unittest discover -s ./tests -p '*.py'
